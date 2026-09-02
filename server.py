@@ -524,8 +524,11 @@ def _bearer_middleware(token: str):
     class Guard(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             if "/mcp" in request.url.path:
+                q = request.query_params.get("token", "")
                 header_ok = request.headers.get("authorization", "") == f"Bearer {token}"
-                query_ok = request.query_params.get("token") == token
+                # tolerate an un-encoded '+' in the URL (a raw '+' in a query
+                # string decodes to a space): compare both forms.
+                query_ok = token in (q, q.replace(" ", "+"))
                 if not (header_ok or query_ok):
                     return JSONResponse({"error": "unauthorized"}, status_code=401)
             return await call_next(request)
