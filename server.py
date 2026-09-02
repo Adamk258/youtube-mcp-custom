@@ -510,20 +510,22 @@ def calculate_engagement(video_id: str) -> dict:
 
 
 # ------------------------------------------------------------------- transport
-def _install_bearer_guard(app_token: str) -> None:
-    """Optional shared-secret gate. Enabled only when MCP_BEARER_TOKEN is set."""
+def _bearer_middleware(token: str):
+    """Optional shared-secret gate as Starlette middleware, used only when
+    MCP_BEARER_TOKEN is set (a host like mcphosting.io provides OAuth on its
+    own, so this is a bring-your-own-tunnel convenience)."""
+    from starlette.middleware import Middleware
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import JSONResponse
 
     class Guard(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
-            if request.url.path.rstrip("/").endswith("/mcp"):
-                auth = request.headers.get("authorization", "")
-                if auth != f"Bearer {app_token}":
+            if "/mcp" in request.url.path:
+                if request.headers.get("authorization", "") != f"Bearer {token}":
                     return JSONResponse({"error": "unauthorized"}, status_code=401)
             return await call_next(request)
 
-    mcp.add_middleware(Guard)  # type: ignore[attr-defined]
+    return [Middleware(Guard)]
 
 
 if __name__ == "__main__":
@@ -531,12 +533,12 @@ if __name__ == "__main__":
     # PORT is injected by Render / Railway / Fly / Heroku; MCP_PORT overrides.
     port = int(os.environ.get("MCP_PORT") or os.environ.get("PORT") or "8765")
     token = os.environ.get("MCP_BEARER_TOKEN", "").strip()
-    if token:
-        try:
-            _install_bearer_guard(token)
-            print("[youtube-mcp] bearer-token auth ENABLED")
-        except Exception as e:  # noqa: BLE001
-            print(f"[youtube-mcp] could not install auth guard ({e}); running open")
     print(f"[youtube-mcp] {len(KEYS)} API key(s) loaded; rotation on quotaExceeded")
     print(f"[youtube-mcp] MCP endpoint: http://{host}:{port}/mcp")
-    mcp.run(transport="http", host=host, port=port)
+    if token:
+        print("[youtube-mcp] bearer-token auth ENABLED")
+        import uvicorn
+        uvicorn.run(mcp.http_app(middleware=_bearer_middleware(token)),
+                    host=host, port=port)
+    else:
+        mcp.run(transport="http", host=host, port=port)
