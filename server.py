@@ -474,6 +474,55 @@ def get_clean_transcript(video_id: str, languages: list[str] | None = None) -> d
     return {"video_id": video_id, "word_count": len(text.split()), "text": text}
 
 
+def _srt_ts(sec: float) -> str:
+    ms = int(round(sec * 1000))
+    h, ms = divmod(ms, 3_600_000)
+    m, ms = divmod(ms, 60_000)
+    s, ms = divmod(ms, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+@mcp.tool
+def save_transcript(video_id: str, timestamps: bool = False,
+                    languages: list[str] | None = None,
+                    out_dir: str | None = None) -> dict:
+    """Write the transcript to a FILE on the machine running this server and
+    return its path — so you can open and read the whole thing directly
+    without the assistant having to reproduce it.
+
+    timestamps=False -> <video_id>.txt   (clean prose, paragraph-wrapped)
+    timestamps=True  -> <video_id>.srt   (subtitle file with timings)
+    out_dir defaults to $TRANSCRIPT_DIR or ./transcripts next to the server.
+    """
+    r = get_transcript(video_id, languages)
+    if r.get("error"):
+        return r
+    base = out_dir or os.environ.get("TRANSCRIPT_DIR") or str(
+        Path(__file__).resolve().parent / "transcripts")
+    d = Path(base)
+    d.mkdir(parents=True, exist_ok=True)
+    segs = r["segments"]
+    if timestamps:
+        path = d / f"{video_id}.srt"
+        lines = []
+        for i, s in enumerate(segs, 1):
+            end = s["start"] + (s["duration"] or 0)
+            lines += [str(i), f"{_srt_ts(s['start'])} --> {_srt_ts(end)}",
+                      s["text"].strip(), ""]
+        path.write_text("\n".join(lines), encoding="utf-8")
+    else:
+        path = d / f"{video_id}.txt"
+        text = html.unescape(re.sub(
+            r"\s+", " ", " ".join(s["text"].replace("\n", " ") for s in segs))).strip()
+        # wrap into ~sentence-ish paragraphs for readability
+        text = re.sub(r"(?<=[.!?]) (?=[A-Z])", "\n", text)
+        path.write_text(text, encoding="utf-8")
+    return {"video_id": video_id, "path": str(path),
+            "segment_count": len(segs),
+            "word_count": sum(len(s["text"].split()) for s in segs),
+            "open_hint": f"Open this file to read the full transcript: {path}"}
+
+
 @mcp.tool
 def search_transcript(video_id: str, query: str,
                       languages: list[str] | None = None) -> dict:
