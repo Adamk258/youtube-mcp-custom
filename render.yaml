@@ -1,19 +1,20 @@
-# Render blueprint. In Render: New -> Blueprint -> point at this repo.
-# Then set the secret env vars in the dashboard (they are NOT in this file).
+# Render blueprint. In Render: New -> Blueprint -> pick your youtube-mcp repo.
+# Then set the two YOUTUBE_API_KEY_* values in the dashboard (not in this file).
 services:
   - type: web
     name: youtube-mcp
     runtime: python
-    rootDir: mcp/youtube-mcp
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python server.py
+    # no healthCheckPath: an MCP endpoint rejects plain GETs, so let Render
+    # fall back to a TCP port check.
     envVars:
       - key: MCP_HOST
         value: "0.0.0.0"
       - key: YOUTUBE_API_KEY_2
-        sync: false      # set in dashboard
+        sync: false        # set in dashboard
       - key: YOUTUBE_API_KEY_3
         sync: false
       - key: MCP_BEARER_TOKEN
-        generateValue: true   # Render makes a random secret; copy it into the connector
+        generateValue: true  # Render makes a random secret; paste it into the connector's auth field

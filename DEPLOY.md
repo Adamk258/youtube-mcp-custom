@@ -1,58 +1,76 @@
-# Deploy to mcphosting.io
+# Deploy — keeping this MCP running
 
-mcphosting.io connects a **GitHub repo**, detects Python FastMCP, and gives you a
-remote HTTPS MCP URL that Claude web / ChatGPT can use as a custom connector.
-This folder is already a self-contained repo (`server.py` exposes a module-level
-`mcp = FastMCP(...)` object, which is the entrypoint host runners look for).
+The server needs a **public HTTPS URL ending in `/mcp`** so Claude web / ChatGPT
+web can add it as a custom connector. `server.py` exposes a module-level
+`mcp` object and reads `MCP_HOST` + (`MCP_PORT` \|\| `PORT`) from the env.
 
-## 1. Put this folder on GitHub (one time)
+Pick one:
 
-It was `git init`-ed locally as its own repo (separate from the big vault repo).
-Create an empty repo on github.com named e.g. `youtube-mcp`, then:
+---
 
+## A. Render — free, stable URL, no PC needed  ← recommended
+
+Free web service. Sleeps after ~15 min idle (≈50 s cold start on the next
+call) — fine for bursty research use.
+
+1. Push this repo to GitHub (`git remote add origin … && git push -u origin main`).
+2. Render → **New → Blueprint** → pick the repo. It reads `render.yaml`
+   (build `pip install -r requirements.txt`, start `python server.py`).
+   *(No blueprint? New → Web Service → same two commands, runtime Python.)*
+3. In the service's **Environment** tab set:
+   - `YOUTUBE_API_KEY_2` = your key
+   - `YOUTUBE_API_KEY_3` = your key
+   - `MCP_HOST` = `0.0.0.0`
+   - `MCP_BEARER_TOKEN` = (Render auto-generates one via the blueprint — copy its value)
+   `PORT` is injected automatically; leave it unset.
+4. Deploy → your URL is `https://youtube-mcp-xxxx.onrender.com/mcp`.
+5. Claude web → Settings → Connectors → **Add custom connector** → that URL.
+   Auth field: `Bearer <the MCP_BEARER_TOKEN value>`.
+6. Test in a chat: *"use the YouTube tools — call `list_api_keys`, then
+   `get_clean_transcript` for `Di2DCj2dO4o`."* `list_api_keys` should report
+   `keys_loaded: 2`.
+
+To kill the cold start later: Render Starter plan ($7/mo, always-on), or move
+to Railway/Fly.
+
+---
+
+## B. Cloudflare Tunnel — free, but your PC must stay on
+
+Cloudflare **Workers** can't run this (Python won't run on V8). A **Tunnel**
+just exposes your local `python server.py`.
+
+**Quick (testing, URL changes each run):**
 ```bash
-cd "mcp/youtube-mcp"
-git remote add origin https://github.com/<your-user>/youtube-mcp.git
-git branch -M main
-git push -u origin main
+python server.py                                   # terminal 1
+cloudflared tunnel --url http://127.0.0.1:8765     # terminal 2  -> prints https://<random>.trycloudflare.com
 ```
+MCP URL = that host + `/mcp`.
 
-`.env` is git-ignored — only `.env.example` ships. Keys go in the host, step 3.
+**Persistent (stable URL, survives reboot) — needs a free Cloudflare account + a domain in it:**
+```bash
+cloudflared tunnel login
+cloudflared tunnel create youtube-mcp
+cloudflared tunnel route dns youtube-mcp youtube-mcp.<yourdomain>
+# config.yml:  tunnel: youtube-mcp
+#              ingress: [{hostname: youtube-mcp.<yourdomain>, service: http://127.0.0.1:8765}, {service: http_status:404}]
+cloudflared service install         # runs as a Windows service on boot
+```
+Then run `python server.py` on boot too (Task Scheduler → "At log on" →
+`pythonw.exe server.py`). MCP URL = `https://youtube-mcp.<yourdomain>/mcp`.
 
-## 2. Connect on mcphosting.io
+---
 
-- Sign in with GitHub, pick the `youtube-mcp` repo.
-- Language/framework: **Python / FastMCP** (auto-detected).
-- Entrypoint: `server.py` (object `mcp`). If it asks for a start command:
-  `python server.py` or `fastmcp run server.py:mcp`.
-- It builds from `requirements.txt`.
+## C. Docker host (Fly.io / Railway / Hugging Face Spaces)
 
-## 3. Set environment variables (secrets) in the mcphosting dashboard
+`Dockerfile` is included. Fly: `fly launch` → set the `YOUTUBE_API_KEY_*` +
+`MCP_HOST=0.0.0.0` secrets → `fly deploy`. Railway: New Project → deploy from
+repo → same env vars (always-on, ~$5/mo after trial credit).
 
-| var | value |
-|---|---|
-| `YOUTUBE_API_KEY_2` | your key (from the vault `.env`) |
-| `YOUTUBE_API_KEY_3` | your key |
-| `YOUTUBE_API_KEY_4`… | any more keys you add (server rotates through all) |
-| `MCP_HOST` | `0.0.0.0` |
-| `MCP_BEARER_TOKEN` | *(optional)* a long random string, if you want a shared-secret gate on top of the host's OAuth |
+---
 
-`PORT` is injected by the platform — `server.py` reads `MCP_PORT` \|\| `PORT` \|\| 8765, so leave it unset.
+## Which to use
 
-## 4. Connect the URL
-
-mcphosting gives you `https://<something>.mcphosting.io/mcp` (or similar).
-
-- **Claude web:** Settings → Connectors → Add custom connector → that URL. If mcphosting put OAuth in front, Claude walks you through it; if you set `MCP_BEARER_TOKEN` instead, put `Bearer <token>` in the auth field.
-- **ChatGPT** (Plus/Pro/Team/Enterprise): Settings → Connectors → add MCP server → same URL.
-
-## 5. Verify
-
-In a chat: *"use the YouTube tools — call `list_api_keys`, then `get_clean_transcript` for video `Di2DCj2dO4o`."*
-`list_api_keys` should report `keys_loaded: 2+` and a masked list — that confirms rotation is wired.
-
-## Fallback
-
-If mcphosting's free tier or detection doesn't work out, the same repo deploys to
-Render (`render.yaml` included), Fly.io / Hugging Face Spaces (`Dockerfile`
-included), or run locally + `cloudflared tunnel` (see `README.md`).
+- **Free + set-and-forget:** Render (A). Live with the cold start.
+- **Must be free + always-on + fine with your PC running:** Cloudflare persistent tunnel (B).
+- **A few $/mo for zero hassle, always-on:** Railway or Fly (C).
