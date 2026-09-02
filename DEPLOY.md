@@ -81,3 +81,27 @@ repo → same env vars (always-on, ~$5/mo after trial credit).
 - **Free + set-and-forget:** Render (A). Live with the cold start.
 - **Must be free + always-on + fine with your PC running:** Cloudflare persistent tunnel (B).
 - **A few $/mo for zero hassle, always-on:** Railway or Fly (C).
+
+---
+
+## Transcripts on a cloud host — the one gotcha
+
+YouTube blocks the transcript endpoint from datacenter IPs (Render / AWS / GCP /
+Azure). So on any cloud host, `get_transcript` / `get_clean_transcript` /
+`search_transcript` fail with an IP-block error. **Every Data API tool still
+works** (they use your API key, not scraping).
+
+Two fixes:
+
+1. **Residential proxy** (keeps everything on the cloud host). Set on the host:
+   - `WEBSHARE_PROXY_USERNAME` + `WEBSHARE_PROXY_PASSWORD` — Webshare's
+     **Residential** plan (cheap for low volume; their free tier is datacenter
+     and won't help), or
+   - `YT_PROXY_URL=http://user:pass@host:port` — any residential/rotating proxy.
+   `list_api_keys` shows `transcript_proxy_configured: true` once it's set.
+
+2. **Run it locally instead** (home IP — no proxy needed) and expose it with a
+   Cloudflare tunnel (option B above). Transcripts just work.
+
+Until one of those is in place, let the LLM fall back to its own transcript
+tool (Claude's, or vidIQ's `vidiq_video_transcript`) for the transcript step.

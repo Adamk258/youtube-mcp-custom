@@ -213,6 +213,12 @@ def list_api_keys() -> dict:
         "keys_loaded": len(KEYS),
         "active_index": active,
         "masked": [k[:6] + "…" + k[-4:] for k in KEYS],
+        "transcript_proxy_configured": PROXY_ON,
+        "note": ("Data API tools work from any host. Transcript tools "
+                 "(get_transcript / get_clean_transcript / search_transcript) "
+                 "need a residential proxy when the server runs on a cloud IP — "
+                 "set YT_PROXY_URL or WEBSHARE_PROXY_USERNAME/PASSWORD."
+                 if not PROXY_ON else "transcript proxy is set."),
     }
 
 
@@ -386,18 +392,51 @@ def get_trending_videos(region_code: str = "US", category_id: str | None = None,
     return {"region": region_code, "count": len(out), "results": out}
 
 
-# ---- transcripts (no API key / no quota) ----------------------------------
+# ---- transcripts -----------------------------------------------------------
+# YouTube blocks the timedtext endpoint from datacenter IPs (Render / AWS / GCP
+# / Azure), so a cloud-hosted server needs a residential/rotating proxy for the
+# transcript tools. Data API tools are unaffected (they use the API key).
+# Set ONE of:
+#   WEBSHARE_PROXY_USERNAME + WEBSHARE_PROXY_PASSWORD   (Webshare "Residential")
+#   YT_PROXY_URL = http://user:pass@host:port           (any http/https proxy)
+def _proxy_config():
+    wu = os.environ.get("WEBSHARE_PROXY_USERNAME", "").strip()
+    wp = os.environ.get("WEBSHARE_PROXY_PASSWORD", "").strip()
+    generic = os.environ.get("YT_PROXY_URL", "").strip()
+    try:
+        if wu and wp:
+            from youtube_transcript_api.proxies import WebshareProxyConfig
+            return WebshareProxyConfig(proxy_username=wu, proxy_password=wp)
+        if generic:
+            from youtube_transcript_api.proxies import GenericProxyConfig
+            return GenericProxyConfig(http_url=generic, https_url=generic)
+    except Exception:  # noqa: BLE001  (old lib without .proxies)
+        return None
+    return None
+
+
+PROXY_ON = bool(
+    os.environ.get("YT_PROXY_URL", "").strip()
+    or (os.environ.get("WEBSHARE_PROXY_USERNAME", "").strip()
+        and os.environ.get("WEBSHARE_PROXY_PASSWORD", "").strip()))
+
+
 def _fetch_transcript(video_id: str, languages: list[str]) -> list[dict]:
     from youtube_transcript_api import YouTubeTranscriptApi
+    pc = _proxy_config()
     try:  # newer API (>=1.0): instance .fetch()
-        api = YouTubeTranscriptApi()
+        api = YouTubeTranscriptApi(proxy_config=pc) if pc else YouTubeTranscriptApi()
         fetched = api.fetch(video_id, languages=languages)
         return [{"text": s.text, "start": round(s.start, 2),
                  "duration": round(s.duration, 2)} for s in fetched]
     except (AttributeError, TypeError):
         pass
-    # older API (<=0.6): classmethod .get_transcript()
-    raw = YouTubeTranscriptApi.get_transcript(video_id, languages=languages)
+    # older API (<=0.6): classmethod .get_transcript(..., proxies=?)
+    kw = {"languages": languages}
+    gp = os.environ.get("YT_PROXY_URL", "").strip()
+    if gp:
+        kw["proxies"] = {"http": gp, "https": gp}
+    raw = YouTubeTranscriptApi.get_transcript(video_id, **kw)
     return [{"text": r["text"], "start": round(r["start"], 2),
              "duration": round(r.get("duration", 0.0), 2)} for r in raw]
 
@@ -410,7 +449,16 @@ def get_transcript(video_id: str, languages: list[str] | None = None) -> dict:
     try:
         segs = _fetch_transcript(video_id, langs)
     except Exception as e:  # noqa: BLE001
-        return {"video_id": video_id, "error": f"no transcript: {e}", "segments": []}
+        msg = str(e)
+        hint = ""
+        if not PROXY_ON and ("block" in msg.lower() or "ip" in msg.lower()
+                             or "cloud" in msg.lower() or "RequestBlocked" in msg):
+            hint = (" — YouTube blocks transcript scraping from datacenter IPs; "
+                    "set YT_PROXY_URL (or WEBSHARE_PROXY_USERNAME/PASSWORD) on "
+                    "the host to route through a residential proxy. Data API "
+                    "tools are unaffected.")
+        return {"video_id": video_id, "error": f"no transcript: {msg}{hint}",
+                "proxy_configured": PROXY_ON, "segments": []}
     return {"video_id": video_id, "segment_count": len(segs), "segments": segs}
 
 
