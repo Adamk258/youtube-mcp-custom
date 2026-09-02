@@ -1,0 +1,16 @@
+[project]
+name = "youtube-mcp"
+version = "1.0.0"
+description = "Remote YouTube MCP server (HTTP) with API-key rotation, for Claude web / ChatGPT web"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.3.0",
+    "httpx>=0.27",
+    "youtube-transcript-api>=0.6.2",
+]
+
+[project.scripts]
+youtube-mcp = "server:main"
+
+# Entrypoint for FastMCP-aware hosts: the server object is `server.py:mcp`.
+# Plain start command (reads MCP_HOST / MCP_PORT|PORT from env):  python server.py

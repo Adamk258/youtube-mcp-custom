@@ -528,7 +528,7 @@ def _bearer_middleware(token: str):
     return [Middleware(Guard)]
 
 
-if __name__ == "__main__":
+def main() -> None:
     host = os.environ.get("MCP_HOST", "127.0.0.1")
     # PORT is injected by Render / Railway / Fly / Heroku; MCP_PORT overrides.
     port = int(os.environ.get("MCP_PORT") or os.environ.get("PORT") or "8765")
@@ -542,3 +542,7 @@ if __name__ == "__main__":
                     host=host, port=port)
     else:
         mcp.run(transport="http", host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()
