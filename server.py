@@ -511,9 +511,12 @@ def calculate_engagement(video_id: str) -> dict:
 
 # ------------------------------------------------------------------- transport
 def _bearer_middleware(token: str):
-    """Optional shared-secret gate as Starlette middleware, used only when
-    MCP_BEARER_TOKEN is set (a host like mcphosting.io provides OAuth on its
-    own, so this is a bring-your-own-tunnel convenience)."""
+    """Shared-secret gate, enabled only when MCP_BEARER_TOKEN is set.
+
+    Accepts the secret EITHER as an `Authorization: Bearer <token>` header
+    (Claude web custom connector auth field) OR as a `?token=<token>` query
+    param on the connector URL. The query-param form lets ChatGPT connect with
+    auth set to "No authentication" — its UI has no static-header option."""
     from starlette.middleware import Middleware
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import JSONResponse
@@ -521,7 +524,9 @@ def _bearer_middleware(token: str):
     class Guard(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             if "/mcp" in request.url.path:
-                if request.headers.get("authorization", "") != f"Bearer {token}":
+                header_ok = request.headers.get("authorization", "") == f"Bearer {token}"
+                query_ok = request.query_params.get("token") == token
+                if not (header_ok or query_ok):
                     return JSONResponse({"error": "unauthorized"}, status_code=401)
             return await call_next(request)
 

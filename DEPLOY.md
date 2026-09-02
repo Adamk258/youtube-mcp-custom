@@ -24,8 +24,15 @@ call) — fine for bursty research use.
    - `MCP_BEARER_TOKEN` = (Render auto-generates one via the blueprint — copy its value)
    `PORT` is injected automatically; leave it unset.
 4. Deploy → your URL is `https://youtube-mcp-xxxx.onrender.com/mcp`.
-5. Claude web → Settings → Connectors → **Add custom connector** → that URL.
-   Auth field: `Bearer <the MCP_BEARER_TOKEN value>`.
+5. Connect:
+   - **Claude web** → Settings → Connectors → **Add custom connector** →
+     URL `https://…onrender.com/mcp`, Auth field `Bearer <MCP_BEARER_TOKEN>`.
+   - **ChatGPT** (Plus/Pro/Team/Enterprise) → Connectors → add MCP server →
+     ChatGPT has no static-header option, so put the secret in the URL instead:
+     `https://…onrender.com/mcp?token=<MCP_BEARER_TOKEN>` and set auth to
+     **No authentication**. Leave the whole "OAuth advanced settings" form blank
+     — this server is not an OAuth server. (The `?token=` form works in Claude
+     too if you'd rather not use its auth field.)
 6. Test in a chat: *"use the YouTube tools — call `list_api_keys`, then
    `get_clean_transcript` for `Di2DCj2dO4o`."* `list_api_keys` should report
    `keys_loaded: 2`.
