@@ -97,7 +97,8 @@ endpoint spends your YouTube quota.
 | tool | quota cost | notes |
 |---|---|---|
 | `search_videos(query, order, max_results, published_after, channel_id)` | 100 units | order = relevance/date/viewCount/rating |
-| `get_video_metadata(video_ids)` | 1 unit / 50 vids | views, likes, comments, duration, tags, full description, thumbnail |
+| `get_video_metadata(video_ids)` | 1 unit / 50 vids | views, likes, comments, duration, tags, full description, thumbnail URL |
+| `get_thumbnail(video_id, quality)` | **0** | returns the actual thumbnail IMAGE (not a URL) so the model can look at it — composition, on-image text, face size, colours. `quality` = maxres/hq/sd/mq |
 | `get_channel_info(channel_id \| handle)` | 1–2 units | subs, total views, video count, uploads playlist |
 | `get_channel_videos(channel_id \| handle, order, max_results)` | ~1 unit / 50 | up to 200 uploads + stats + `view_multiple_vs_channel_median` |
 | `get_video_comments(video_id, max_results, order)` | 1 unit | sorted by likes |

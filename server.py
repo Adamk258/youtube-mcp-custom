@@ -252,6 +252,26 @@ def search_videos(query: str, order: str = "relevance", max_results: int = 25,
 
 
 @mcp.tool
+def get_thumbnail(video_id: str, quality: str = "maxres"):
+    """Return the ACTUAL thumbnail IMAGE for a video so you can look at it
+    (composition, on-image text + position, whether a face is present and how
+    big, colours). No quota. quality = maxres | hq | sd | mq. Falls back to a
+    lower quality if the requested one isn't published.
+    Use this whenever you need to READ a competitor's thumbnail — the
+    i.ytimg.com URL alone is not viewable."""
+    from fastmcp.utilities.types import Image
+    vid = re.sub(r"[^A-Za-z0-9_-]", "", str(video_id))[:20]
+    order = {"maxres": ["maxresdefault", "sddefault", "hqdefault", "mqdefault"],
+             "hq": ["hqdefault", "mqdefault"], "sd": ["sddefault", "hqdefault"],
+             "mq": ["mqdefault", "hqdefault"]}.get(quality, ["maxresdefault", "hqdefault"])
+    for q in order:
+        r = _client.get(f"https://i.ytimg.com/vi/{vid}/{q}.jpg")
+        if r.status_code == 200 and len(r.content) > 3000:
+            return Image(data=r.content, format="jpeg")
+    raise RuntimeError(f"no thumbnail image found for {vid}")
+
+
+@mcp.tool
 def get_video_metadata(video_ids: Any) -> dict:
     """Real stats for up to 50 videos at once. Pass a list of ids or a
     whitespace/comma string. Returns views, likes, comments, duration,
